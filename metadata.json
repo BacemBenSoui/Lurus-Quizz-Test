@@ -2,5 +2,7 @@
   "name": "Quiz Extra MAG - Validation",
   "description": "Plateforme d'évaluation chronométrée pour la formation Extra MAG® par Éléments Pharma, avec suivi en temps réel et export PDF.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

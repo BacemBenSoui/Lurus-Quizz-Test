@@ -55,7 +55,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
   const [selectedNetwork, setSelectedNetwork] = useState<string>('ALL');
   const [selectedSector, setSelectedSector] = useState<string>('ALL');
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
-  const [seeding, setSeeding] = useState<boolean>(false);
+  const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
+  const [resetting, setResetting] = useState<boolean>(false);
 
   const fetchLiveStats = async () => {
     try {
@@ -82,28 +83,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
     };
   }, [autoRefresh]);
 
-  const handleSeedDemo = async () => {
-    setSeeding(true);
-    try {
-      const res = await fetch('/api/admin/seed-demo', { method: 'POST' });
-      if (res.ok) {
-        await fetchLiveStats();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSeeding(false);
-    }
-  };
-
   const handleReset = async () => {
-    if (!window.confirm('Voulez-vous vraiment réinitialiser toutes les données des participants ?')) return;
+    setResetting(true);
     try {
       await fetch('/api/admin/reset', { method: 'POST' });
       await fetchLiveStats();
       setSelectedParticipant(null);
+      setSelectedNetwork('ALL');
+      setSelectedSector('ALL');
     } catch (e) {
       console.error(e);
+    } finally {
+      setResetting(false);
+      setShowResetConfirm(false);
     }
   };
 
@@ -154,7 +146,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
   };
 
   const filteredParticipants = (data?.participants || []).filter((p) => {
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
     const matchSearch =
       !q ||
       p.nom.toLowerCase().includes(q) ||
@@ -163,8 +155,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
       p.reseau.toLowerCase().includes(q) ||
       p.email.toLowerCase().includes(q);
 
-    const matchNetwork = selectedNetwork === 'ALL' || p.reseau === selectedNetwork;
-    const matchSector = selectedSector === 'ALL' || p.secteur === selectedSector;
+    const matchNetwork =
+      selectedNetwork === 'ALL' ||
+      p.reseau.trim().toLowerCase() === selectedNetwork.trim().toLowerCase();
+    const matchSector =
+      selectedSector === 'ALL' ||
+      p.secteur.trim().toLowerCase() === selectedSector.trim().toLowerCase();
 
     return matchSearch && matchNetwork && matchSector;
   });
@@ -216,21 +212,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
             </button>
 
             <button
-              onClick={handleSeedDemo}
-              disabled={seeding}
-              className="px-3.5 py-2 rounded-xl bg-[#ea943b] hover:bg-[#d8842d] text-[#2c1705] font-bold text-xs transition-colors flex items-center gap-1.5 shadow-md"
-              title="Simuler 40 participants pour tester le suivi live"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>{seeding ? 'Chargement...' : 'Simuler 40 participants'}</span>
-            </button>
-
-            <button
-              onClick={handleReset}
-              className="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/50 text-rose-300 text-xs transition-colors flex items-center gap-1"
-              title="Réinitialiser"
+              onClick={() => setShowResetConfirm(true)}
+              className="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/50 text-rose-300 text-xs transition-colors flex items-center gap-1.5"
+              title="Vider la base de données pour la session réelle"
             >
               <Trash2 className="w-3.5 h-3.5" />
+              <span>Vider la base</span>
             </button>
 
             <button
@@ -417,7 +404,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
         )}
 
         {/* Analytics by Réseau & Secteur */}
-        {data && (Boolean(data.networkStats?.length) || Boolean(data.sectorStats?.length)) && (
+        {data && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Panel: Analyse par Réseau */}
             <div className="bg-[#0a313b] border border-teal-700/50 rounded-2xl p-5 shadow-xl">
@@ -426,10 +413,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                   <Network className="w-5 h-5 text-teal-400" />
                   <div>
                     <h2 className="font-serif text-base font-bold text-white">
-                      Analyse par Réseau Commercial
+                      Analyse par Réseau
                     </h2>
                     <p className="text-[11px] text-teal-300/70">
-                      Performance comparée des réseaux de distribution
+                      Regroupement fidèle selon les réseaux saisis par les candidats
                     </p>
                   </div>
                 </div>
@@ -444,65 +431,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                 )}
               </div>
 
-              <div className="space-y-3">
-                {(data.networkStats || []).map((g) => {
-                  const isSelected = selectedNetwork === g.name;
-                  const pct = Math.round((g.averageScore / 50) * 100);
-                  const color =
-                    g.averageScore >= 35
-                      ? 'text-emerald-400'
-                      : g.averageScore >= 25
-                      ? 'text-amber-400'
-                      : 'text-rose-400';
-                  const barBg =
-                    g.averageScore >= 35
-                      ? 'bg-emerald-400'
-                      : g.averageScore >= 25
-                      ? 'bg-amber-400'
-                      : 'bg-rose-400';
+              {(!data.networkStats || data.networkStats.length === 0) ? (
+                <div className="py-8 text-center text-teal-300/60 text-xs border border-dashed border-teal-800/60 rounded-xl p-4">
+                  Aucun réseau saisi pour l'instant. Les groupes s'afficheront automatiquement selon les saisies réelles des candidats.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.networkStats.map((g) => {
+                    const isSelected = selectedNetwork.toLowerCase() === g.name.toLowerCase();
+                    const count = g.total || g.totalParticipants || 0;
+                    const completed = g.completed || g.completedCount || 0;
+                    const pct = Math.round((g.averageScore / 50) * 100);
+                    const color =
+                      g.averageScore >= 35
+                        ? 'text-emerald-400'
+                        : g.averageScore >= 25
+                        ? 'text-amber-400'
+                        : 'text-rose-400';
+                    const barBg =
+                      g.averageScore >= 35
+                        ? 'bg-emerald-400'
+                        : g.averageScore >= 25
+                        ? 'bg-amber-400'
+                        : 'bg-rose-400';
 
-                  return (
-                    <div
-                      key={g.name}
-                      onClick={() => setSelectedNetwork(isSelected ? 'ALL' : g.name)}
-                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#0c3c48] border-teal-400 ring-1 ring-teal-400/50 shadow-md'
-                          : 'bg-[#07242c] border-teal-900/60 hover:bg-[#092d37] hover:border-teal-700/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-white">{g.name}</span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-950 border border-teal-800/80 text-teal-300">
-                            {g.total} participant{g.total > 1 ? 's' : ''} ({g.completed} terminé{g.completed > 1 ? 's' : ''})
+                    return (
+                      <div
+                        key={g.name}
+                        onClick={() => setSelectedNetwork(isSelected ? 'ALL' : g.name)}
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#0c3c48] border-teal-400 ring-1 ring-teal-400/50 shadow-md'
+                            : 'bg-[#07242c] border-teal-900/60 hover:bg-[#092d37] hover:border-teal-700/50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-white">{g.name}</span>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-950 border border-teal-800/80 text-teal-300">
+                              {count} participant{count > 1 ? 's' : ''} ({completed} terminé{completed > 1 ? 's' : ''})
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className={`font-serif text-base font-bold ${color}`}>
+                              {g.averageScore}
+                            </span>
+                            <span className="text-xs text-teal-400/70"> / 50 pts</span>
+                          </div>
+                        </div>
+
+                        <div className="w-full h-2 bg-teal-950 rounded-full overflow-hidden mb-2">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${barBg}`}
+                            style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-teal-300/70 pt-1">
+                          <span>Taux de validation (≥30 pts) : <strong className="text-teal-200">{g.validationRate}%</strong></span>
+                          <span className="text-[10px] text-teal-400/80">
+                            {isSelected ? 'Cliquer pour retirer le filtre' : 'Cliquer pour filtrer'}
                           </span>
                         </div>
-                        <div className="text-right">
-                          <span className={`font-serif text-base font-bold ${color}`}>
-                            {g.averageScore}
-                          </span>
-                          <span className="text-xs text-teal-400/70"> / 50 pts</span>
-                        </div>
                       </div>
-
-                      <div className="w-full h-2 bg-teal-950 rounded-full overflow-hidden mb-2">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${barBg}`}
-                          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between text-[11px] text-teal-300/70 pt-1">
-                        <span>Taux de validation (≥30 pts) : <strong className="text-teal-200">{g.validationRate}%</strong></span>
-                        <span className="text-[10px] text-teal-400/80">
-                          {isSelected ? 'Cliquer pour enlever filtre' : 'Cliquer pour filtrer la table'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Panel: Analyse par Secteur */}
@@ -512,10 +507,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                   <MapPin className="w-5 h-5 text-amber-400" />
                   <div>
                     <h2 className="font-serif text-base font-bold text-white">
-                      Analyse par Secteur Géographique
+                      Analyse par Secteur
                     </h2>
                     <p className="text-[11px] text-teal-300/70">
-                      Moyennes et taux de réussite par région
+                      Regroupement fidèle selon les secteurs saisis par les candidats
                     </p>
                   </div>
                 </div>
@@ -530,65 +525,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                 )}
               </div>
 
-              <div className="space-y-3">
-                {(data.sectorStats || []).map((g) => {
-                  const isSelected = selectedSector === g.name;
-                  const pct = Math.round((g.averageScore / 50) * 100);
-                  const color =
-                    g.averageScore >= 35
-                      ? 'text-emerald-400'
-                      : g.averageScore >= 25
-                      ? 'text-amber-400'
-                      : 'text-rose-400';
-                  const barBg =
-                    g.averageScore >= 35
-                      ? 'bg-emerald-400'
-                      : g.averageScore >= 25
-                      ? 'bg-amber-400'
-                      : 'bg-rose-400';
+              {(!data.sectorStats || data.sectorStats.length === 0) ? (
+                <div className="py-8 text-center text-teal-300/60 text-xs border border-dashed border-teal-800/60 rounded-xl p-4">
+                  Aucun secteur saisi pour l'instant. Les groupes s'afficheront automatiquement selon les saisies réelles des candidats.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {data.sectorStats.map((g) => {
+                    const isSelected = selectedSector.toLowerCase() === g.name.toLowerCase();
+                    const count = g.total || g.totalParticipants || 0;
+                    const completed = g.completed || g.completedCount || 0;
+                    const pct = Math.round((g.averageScore / 50) * 100);
+                    const color =
+                      g.averageScore >= 35
+                        ? 'text-emerald-400'
+                        : g.averageScore >= 25
+                        ? 'text-amber-400'
+                        : 'text-rose-400';
+                    const barBg =
+                      g.averageScore >= 35
+                        ? 'bg-emerald-400'
+                        : g.averageScore >= 25
+                        ? 'bg-amber-400'
+                        : 'bg-rose-400';
 
-                  return (
-                    <div
-                      key={g.name}
-                      onClick={() => setSelectedSector(isSelected ? 'ALL' : g.name)}
-                      className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#0c3c48] border-amber-400 ring-1 ring-amber-400/50 shadow-md'
-                          : 'bg-[#07242c] border-teal-900/60 hover:bg-[#092d37] hover:border-teal-700/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-white">{g.name}</span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-950 border border-teal-800/80 text-teal-300">
-                            {g.total} participant{g.total > 1 ? 's' : ''} ({g.completed} terminé{g.completed > 1 ? 's' : ''})
+                    return (
+                      <div
+                        key={g.name}
+                        onClick={() => setSelectedSector(isSelected ? 'ALL' : g.name)}
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#0c3c48] border-amber-400 ring-1 ring-amber-400/50 shadow-md'
+                            : 'bg-[#07242c] border-teal-900/60 hover:bg-[#092d37] hover:border-teal-700/50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-sm text-white">{g.name}</span>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-950 border border-teal-800/80 text-teal-300">
+                              {count} participant{count > 1 ? 's' : ''} ({completed} terminé{completed > 1 ? 's' : ''})
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className={`font-serif text-base font-bold ${color}`}>
+                              {g.averageScore}
+                            </span>
+                            <span className="text-xs text-teal-400/70"> / 50 pts</span>
+                          </div>
+                        </div>
+
+                        <div className="w-full h-2 bg-teal-950 rounded-full overflow-hidden mb-2">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${barBg}`}
+                            style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-teal-300/70 pt-1">
+                          <span>Taux de validation (≥30 pts) : <strong className="text-teal-200">{g.validationRate}%</strong></span>
+                          <span className="text-[10px] text-amber-300/80">
+                            {isSelected ? 'Cliquer pour retirer le filtre' : 'Cliquer pour filtrer'}
                           </span>
                         </div>
-                        <div className="text-right">
-                          <span className={`font-serif text-base font-bold ${color}`}>
-                            {g.averageScore}
-                          </span>
-                          <span className="text-xs text-teal-400/70"> / 50 pts</span>
-                        </div>
                       </div>
-
-                      <div className="w-full h-2 bg-teal-950 rounded-full overflow-hidden mb-2">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${barBg}`}
-                          style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between text-[11px] text-teal-300/70 pt-1">
-                        <span>Taux de validation (≥30 pts) : <strong className="text-teal-200">{g.validationRate}%</strong></span>
-                        <span className="text-[10px] text-amber-300/80">
-                          {isSelected ? 'Cliquer pour enlever filtre' : 'Cliquer pour filtrer la table'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -617,10 +620,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                   onChange={(e) => setSelectedNetwork(e.target.value)}
                   className="px-2 py-1.5 rounded-lg bg-[#051f26] border border-teal-800/80 text-teal-200 text-xs focus:outline-none focus:ring-1 focus:ring-teal-400"
                 >
-                  <option value="ALL">Tous réseaux</option>
+                  <option value="ALL">Tous réseaux ({data?.participants.length || 0})</option>
                   {(data?.networkStats || []).map((net) => (
                     <option key={net.name} value={net.name}>
-                      {net.name}
+                      {net.name} ({net.total || net.totalParticipants})
                     </option>
                   ))}
                 </select>
@@ -632,10 +635,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                   onChange={(e) => setSelectedSector(e.target.value)}
                   className="px-2 py-1.5 rounded-lg bg-[#051f26] border border-teal-800/80 text-teal-200 text-xs focus:outline-none focus:ring-1 focus:ring-teal-400"
                 >
-                  <option value="ALL">Tous secteurs</option>
+                  <option value="ALL">Tous secteurs ({data?.participants.length || 0})</option>
                   {(data?.sectorStats || []).map((sec) => (
                     <option key={sec.name} value={sec.name}>
-                      {sec.name}
+                      {sec.name} ({sec.total || sec.totalParticipants})
                     </option>
                   ))}
                 </select>
@@ -685,7 +688,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                   {filteredParticipants.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-teal-300/60">
-                        Aucun participant enregistré pour le moment. Cliquez sur « Simuler 40 participants » pour tester le flux en direct.
+                        {data && data.participants.length > 0
+                          ? 'Aucun participant ne correspond aux filtres sélectionnés.'
+                          : 'Aucun participant enregistré pour le moment. La base de données est vide et prête pour la session réelle.'}
                       </td>
                     </tr>
                   ) : (
@@ -903,6 +908,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToQuiz, on
                   className="px-4 py-2 bg-teal-500 hover:bg-teal-400 text-[#06242b] font-bold text-xs rounded-xl"
                 >
                   Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Confirmation de réinitialisation de la base */}
+        {showResetConfirm && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-[#0a313b] border border-rose-800/60 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex items-center gap-3 text-rose-400">
+                <AlertCircle className="w-6 h-6 shrink-0" />
+                <h3 className="font-serif text-lg font-bold text-white">
+                  Vider la base de données ?
+                </h3>
+              </div>
+              <p className="text-teal-200/80 text-sm">
+                Cette action va réinitialiser l'ensemble des données participants pour préparer la session réelle de certification. Tous les scores et réponses actuels seront effacés.
+              </p>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  disabled={resetting}
+                  className="px-4 py-2 rounded-xl bg-teal-950 hover:bg-teal-900 border border-teal-800/80 text-teal-300 text-xs font-medium"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleReset}
+                  disabled={resetting}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{resetting ? 'Suppression...' : 'Confirmer et vider la base'}</span>
                 </button>
               </div>
             </div>

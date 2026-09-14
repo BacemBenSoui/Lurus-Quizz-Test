@@ -139,38 +139,6 @@ export const PageRegister: React.FC<PageRegisterProps> = ({ onRegistered, onBack
               </p>
             </div>
           </div>
-
-          {/* Quick Demo Pre-Fill buttons for testing */}
-          <div className="pt-2 flex flex-wrap gap-2 text-xs text-teal-300/80">
-            <span>Pré-remplir pour test :</span>
-            <button
-              type="button"
-              onClick={() => {
-                setNom('Ben Salem');
-                setPrenom('Yosra');
-                setSecteur('Tunis Nord');
-                setReseau('Réseau Officine');
-                setEmail('yosra.bensalem@pharmasud.tn');
-              }}
-              className="underline hover:text-teal-100"
-            >
-              Délégué 1
-            </button>
-            <span>•</span>
-            <button
-              type="button"
-              onClick={() => {
-                setNom('Trabelsi');
-                setPrenom('Amine');
-                setSecteur('Sousse');
-                setReseau('Réseau Médical');
-                setEmail('amine.trabelsi@elements-pharma.tn');
-              }}
-              className="underline hover:text-teal-100"
-            >
-              Délégué 2
-            </button>
-          </div>
         </div>
 
         {/* Right Column: Registration Card */}

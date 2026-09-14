@@ -70,7 +70,9 @@ export interface SectionStat {
 export interface GroupStat {
   name: string;
   totalParticipants: number;
+  total?: number;
   completedCount: number;
+  completed?: number;
   inProgressCount: number;
   averageScore: number;
   averagePercentage: number;
@@ -79,7 +81,7 @@ export interface GroupStat {
   validatedCount: number;
   supportCount: number;
   retakeCount: number;
-  validationRate: number; // % validated (>=40)
+  validationRate: number; // % validé (score >= 30)
   subGroups?: string[]; // e.g. for a network, the sectors included
 }
 

@@ -298,104 +298,101 @@ app.get('/api/admin/live', (req, res) => {
     };
   });
 
-  // Analyse par Réseau
-  const networkMap: Record<string, typeof list> = {};
-  list.forEach((p) => {
-    const net = (p.reseau || 'Non renseigné').trim();
-    if (!networkMap[net]) networkMap[net] = [];
-    networkMap[net].push(p);
-  });
+  // Regroupement dynamique et fidèle basé STRICTEMENT sur les saisies réelles des candidats
+  function computeGroupStats(
+    field: 'reseau' | 'secteur',
+    crossField: 'secteur' | 'reseau'
+  ) {
+    interface GroupBucket {
+      name: string;
+      members: ParticipantRecord[];
+    }
+    const buckets: Record<string, GroupBucket> = {};
 
-  const networkStats = Object.entries(networkMap).map(([netName, members]) => {
-    const totalP = members.length;
-    const completedList = members.filter((m) => m.completed);
-    const completedCount = completedList.length;
-    const inProgressCount = totalP - completedCount;
-    const valCount = members.filter((m) => m.completed && m.totalScore >= 40).length;
-    const suppCount = members.filter((m) => m.completed && m.totalScore >= 30 && m.totalScore < 40).length;
-    const retCount = members.filter((m) => m.completed && m.totalScore < 30).length;
+    list.forEach((p) => {
+      const raw = (p[field] || '').trim();
+      if (!raw) return;
 
-    // Use completed members for average if any exist, otherwise calculate across all active
-    const pool = completedList.length > 0 ? completedList : members;
-    const avgScore = pool.length > 0
-      ? Math.round((pool.reduce((acc, m) => acc + m.totalScore, 0) / pool.length) * 10) / 10
-      : 0;
-    const avgPct = Math.round((avgScore / 50) * 100);
+      // Normalisation de la clé : minuscules et espaces multiples réduits
+      const normalizedKey = raw.toLowerCase().replace(/\s+/g, ' ');
 
-    const highestScore = members.reduce((max, m) => Math.max(max, m.totalScore), 0);
-    const lowestScore = members.reduce((min, m) => Math.min(min, m.totalScore), 50);
+      if (!buckets[normalizedKey]) {
+        const cleaned = raw.replace(/\s+/g, ' ');
+        // Mise en majuscule de la première lettre pour un affichage propre
+        const displayName =
+          raw === raw.toLowerCase()
+            ? cleaned
+                .split(' ')
+                .map((w) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : ''))
+                .join(' ')
+            : cleaned;
 
-    const validationRate = completedCount > 0
-      ? Math.round((valCount / completedCount) * 100)
-      : (totalP > 0 ? Math.round((valCount / totalP) * 100) : 0);
+        buckets[normalizedKey] = {
+          name: displayName,
+          members: [],
+        };
+      }
+      buckets[normalizedKey].members.push(p);
+    });
 
-    const sectorsInNet = Array.from(new Set(members.map((m) => m.secteur).filter(Boolean)));
+    return Object.values(buckets)
+      .map(({ name, members }) => {
+        const totalP = members.length;
+        const completedList = members.filter((m) => m.completed);
+        const completedCount = completedList.length;
+        const inProgressCount = totalP - completedCount;
 
-    return {
-      name: netName,
-      totalParticipants: totalP,
-      completedCount,
-      inProgressCount,
-      averageScore: avgScore,
-      averagePercentage: avgPct,
-      highestScore,
-      lowestScore: lowestScore === 50 && members.length === 0 ? 0 : lowestScore,
-      validatedCount: valCount,
-      supportCount: suppCount,
-      retakeCount: retCount,
-      validationRate,
-      subGroups: sectorsInNet,
-    };
-  }).sort((a, b) => b.averageScore - a.averageScore);
+        const valCount = completedList.filter((m) => m.totalScore >= 40).length;
+        const suppCount = completedList.filter((m) => m.totalScore >= 30 && m.totalScore < 40).length;
+        const retCount = completedList.filter((m) => m.totalScore < 30).length;
 
-  // Analyse par Secteur
-  const sectorMap: Record<string, typeof list> = {};
-  list.forEach((p) => {
-    const sec = (p.secteur || 'Non renseigné').trim();
-    if (!sectorMap[sec]) sectorMap[sec] = [];
-    sectorMap[sec].push(p);
-  });
+        // Taux de validation officiel (score ≥ 30 points)
+        const validationRate =
+          completedCount > 0
+            ? Math.round(((valCount + suppCount) / completedCount) * 100)
+            : 0;
 
-  const sectorStats = Object.entries(sectorMap).map(([secName, members]) => {
-    const totalP = members.length;
-    const completedList = members.filter((m) => m.completed);
-    const completedCount = completedList.length;
-    const inProgressCount = totalP - completedCount;
-    const valCount = members.filter((m) => m.completed && m.totalScore >= 40).length;
-    const suppCount = members.filter((m) => m.completed && m.totalScore >= 30 && m.totalScore < 40).length;
-    const retCount = members.filter((m) => m.completed && m.totalScore < 30).length;
+        // Moyenne basée sur les candidats ayant terminé (ou l'avancement actuel si aucun n'a terminé)
+        const pool = completedCount > 0 ? completedList : members;
+        const avgScore =
+          pool.length > 0
+            ? Math.round((pool.reduce((acc, m) => acc + m.totalScore, 0) / pool.length) * 10) / 10
+            : 0;
+        const avgPct = Math.round((avgScore / 50) * 100);
 
-    const pool = completedList.length > 0 ? completedList : members;
-    const avgScore = pool.length > 0
-      ? Math.round((pool.reduce((acc, m) => acc + m.totalScore, 0) / pool.length) * 10) / 10
-      : 0;
-    const avgPct = Math.round((avgScore / 50) * 100);
+        const highestScore = members.reduce((max, m) => Math.max(max, m.totalScore), 0);
+        const lowestScore =
+          completedCount > 0
+            ? completedList.reduce((min, m) => Math.min(min, m.totalScore), 50)
+            : members.reduce((min, m) => Math.min(min, m.totalScore), 50);
 
-    const highestScore = members.reduce((max, m) => Math.max(max, m.totalScore), 0);
-    const lowestScore = members.reduce((min, m) => Math.min(min, m.totalScore), 50);
+        const subGroups = Array.from(
+          new Set(members.map((m) => (m[crossField] || '').trim()).filter(Boolean))
+        );
 
-    const validationRate = completedCount > 0
-      ? Math.round((valCount / completedCount) * 100)
-      : (totalP > 0 ? Math.round((valCount / totalP) * 100) : 0);
+        return {
+          name,
+          totalParticipants: totalP,
+          total: totalP,
+          completedCount,
+          completed: completedCount,
+          inProgressCount,
+          averageScore: avgScore,
+          averagePercentage: avgPct,
+          highestScore,
+          lowestScore: lowestScore === 50 && completedCount === 0 ? 0 : lowestScore,
+          validatedCount: valCount,
+          supportCount: suppCount,
+          retakeCount: retCount,
+          validationRate,
+          subGroups,
+        };
+      })
+      .sort((a, b) => b.total - a.total || b.averageScore - a.averageScore);
+  }
 
-    const networksInSec = Array.from(new Set(members.map((m) => m.reseau).filter(Boolean)));
-
-    return {
-      name: secName,
-      totalParticipants: totalP,
-      completedCount,
-      inProgressCount,
-      averageScore: avgScore,
-      averagePercentage: avgPct,
-      highestScore,
-      lowestScore: lowestScore === 50 && members.length === 0 ? 0 : lowestScore,
-      validatedCount: valCount,
-      supportCount: suppCount,
-      retakeCount: retCount,
-      validationRate,
-      subGroups: networksInSec,
-    };
-  }).sort((a, b) => b.averageScore - a.averageScore);
+  const networkStats = computeGroupStats('reseau', 'secteur');
+  const sectorStats = computeGroupStats('secteur', 'reseau');
 
   // Sorted list: completed high scorers first, then active
   const sorted = [...list].sort((a, b) => {
